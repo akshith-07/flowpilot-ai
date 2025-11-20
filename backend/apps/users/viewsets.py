@@ -171,13 +171,51 @@ class AuthViewSet(viewsets.GenericViewSet):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # TODO: Implement password reset confirmation logic
-        # This requires password reset token model or using JWT
+        # Get token and new password from validated data
+        token_value = serializer.validated_data['token']
+        new_password = serializer.validated_data['new_password']
 
-        return Response({
-            'success': True,
-            'message': 'Password reset successful.'
-        })
+        # Import the model
+        from .models import PasswordResetToken
+        from django.utils import timezone
+
+        try:
+            # Get the token
+            token = PasswordResetToken.objects.select_related('user').get(
+                token=token_value
+            )
+
+            # Validate token
+            if not token.is_valid():
+                if token.is_used:
+                    raise ValidationError('Password reset token has already been used.')
+                else:
+                    raise ValidationError('Password reset token has expired.')
+
+            # Reset the password
+            user = token.user
+            user.set_password(new_password)
+            user.password_changed_at = timezone.now()
+            user.save(update_fields=['password', 'password_changed_at'])
+
+            # Mark token as used
+            token.is_used = True
+            token.used_at = timezone.now()
+            token.save(update_fields=['is_used', 'used_at'])
+
+            # Invalidate all user sessions (force re-login)
+            from .models import UserSession
+            UserSession.objects.filter(user=user, is_active=True).update(is_active=False)
+
+            logger.info(f'Password reset successful for user: {user.email}')
+
+            return Response({
+                'success': True,
+                'message': 'Password reset successful. Please login with your new password.'
+            })
+
+        except PasswordResetToken.DoesNotExist:
+            raise ValidationError('Invalid password reset token.')
 
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
