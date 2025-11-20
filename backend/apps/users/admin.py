@@ -4,7 +4,7 @@ Django admin configuration for Users app.
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
-from .models import User, UserSession, LoginAttempt, MFADevice, OAuthConnection
+from .models import User, UserSession, LoginAttempt, MFADevice, OAuthConnection, PasswordResetToken
 
 
 @admin.register(User)
@@ -155,4 +155,29 @@ class OAuthConnectionAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         """Disable adding OAuth connections via admin."""
+        return False
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    """Admin configuration for PasswordResetToken model."""
+
+    list_display = [
+        'user', 'token_preview', 'is_used', 'expires_at', 'created_at'
+    ]
+    list_filter = ['is_used', 'created_at']
+    search_fields = ['user__email', 'token']
+    readonly_fields = [
+        'id', 'user', 'token', 'is_used', 'expires_at',
+        'used_at', 'ip_address', 'user_agent', 'created_at'
+    ]
+    ordering = ['-created_at']
+
+    def token_preview(self, obj):
+        """Display preview of token."""
+        return f'{obj.token[:10]}...'
+    token_preview.short_description = 'Token'
+
+    def has_add_permission(self, request):
+        """Disable adding tokens via admin."""
         return False

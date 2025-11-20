@@ -81,9 +81,13 @@ def send_password_reset_email(self, email):
             logger.info(f'Password reset requested for non-existent email: {email}')
             return
 
-        # TODO: Generate password reset token (implement token model or use JWT)
-        reset_token = "placeholder-token"
-        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
+        # Generate password reset token
+        from .models import PasswordResetToken
+        from core.utils import get_client_ip, get_user_agent
+
+        # Create reset token (will invalidate any existing tokens)
+        reset_token_obj = PasswordResetToken.create_for_user(user)
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token_obj.token}"
 
         # Send email
         subject = 'Password Reset - FlowPilot AI'

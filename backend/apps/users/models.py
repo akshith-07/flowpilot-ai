@@ -3,7 +3,7 @@ User models for FlowPilot AI.
 Includes User, UserSession, LoginAttempt, MFADevice, and OAuthConnection.
 """
 import uuid
-from django.contrib.auth.models.AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
 from django_cryptography.fields import encrypt
@@ -373,3 +373,80 @@ class OAuthConnection(models.Model):
         if not self.expires_at:
             return False
         return timezone.now() > self.expires_at
+
+
+class PasswordResetToken(models.Model):
+    """
+    Password reset token model.
+    Manages password reset tokens with expiration.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token = models.CharField(max_length=255, unique=True, db_index=True)
+
+    # Status
+    is_used = models.BooleanField(default=False, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    # Security
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'password_reset_tokens'
+        verbose_name = 'Password Reset Token'
+        verbose_name_plural = 'Password Reset Tokens'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['token', 'is_used']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.user.email} - {self.token[:10]}...'
+
+    def is_valid(self):
+        """Check if token is valid (not used and not expired)."""
+        if self.is_used:
+            return False
+        if timezone.now() > self.expires_at:
+            return False
+        return True
+
+    @staticmethod
+    def generate_token():
+        """Generate a secure random token."""
+        import secrets
+        return secrets.token_urlsafe(32)
+
+    @classmethod
+    def create_for_user(cls, user, ip_address=None, user_agent=None):
+        """
+        Create a new password reset token for a user.
+        Invalidates all existing tokens for the user.
+
+        Args:
+            user: User instance
+            ip_address: IP address of the request
+            user_agent: User agent string
+
+        Returns:
+            PasswordResetToken instance
+        """
+        # Invalidate all existing tokens
+        cls.objects.filter(user=user, is_used=False).update(is_used=True)
+
+        # Create new token
+        token = cls(
+            user=user,
+            token=cls.generate_token(),
+            expires_at=timezone.now() + timezone.timedelta(hours=1),
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        token.save()
+        return token
