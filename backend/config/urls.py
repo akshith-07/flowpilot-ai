@@ -19,6 +19,7 @@ api_v1_patterns = [
     path('notifications/', include('apps.notifications.urls')),
     path('analytics/', include('apps.analytics.urls')),
     path('billing/', include('apps.billing.urls')),
+    path('sso/', include('apps.sso.urls')),
 ]
 
 urlpatterns = [
